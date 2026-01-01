@@ -1,0 +1,18 @@
+name: 'autoreview'
+description: 'automatically review PRs by delegating to the right ones'
+inputs:
+  github_token:
+    description: 'API Token for Github'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: "Autoassign"
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+          curl -s --fail --retry 8 --header "Authorization: Bearer $GH_TOKEN" "${GITHUB_API_URL:-https://api.github.com}"/user | jq .login -r | xargs -I '{}' gh pr list --repo "$GITHUB_REPOSITORY" --state open --author '{}' --json number | jq '.[].number' | while read -r number; do
+            curl -s --fail --retry 8 --header "Authorization: Bearer $GH_TOKEN" "${GITHUB_API_URL:-https://api.github.com}"/repos/"$GITHUB_REPOSITORY"/contributors | jq '.[].login' -r | jq -s '{ "reviewers": ., "team_reviewers": [] }' \
+              | curl -s --fail --retry 8 --header "Authorization: Bearer $GH_TOKEN" "${GITHUB_API_URL:-https://api.github.com}"/repos/"$GITHUB_REPOSITORY"/pulls/"$number"/requested_reviewers -d @- 
+          done
